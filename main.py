@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from db import recipes_collection
 from typing import List
-import requests #to call the external Api
+import requests 
 
-app = FastAPI()
 
-MEALDB_API = "https://www.themealdb.com/api/json/v1/1"
+#from dotenv import MEALDB_API
+
+app = FastAPI(title= "Welcome to Godsgift Kitchen", description= "Here, you'll find everything about food")
+
+#MEALDB_API = os.getenv("MEALDB_API")
 
 class Recipe(BaseModel):
   recipe_name: str
@@ -15,35 +18,36 @@ class Recipe(BaseModel):
   user_notes: str
 
 
-#Fetch recipes using ingredient (from TheMealDB API)
-@app.get("/recipes/{ingredient}") 
+MEALDB_API = "https://www.themealdb.com/api/json/v1/1"
+
+@app.get("/", tags=["Homepage"])
+def get_home():
+    return {"message": "You are on the recipe finder page"}
+
+
+
+#get recipes using ingredient (from TheMealDB API)
+@app.get("/recipes/{ingredient}", tags=["Recipe Finder"]) 
 def get_recipes(ingredient: str):
-    url = f"{MEALDB_API}/filter.php?i={ingredient}"
-    result = requests.get(url)
+    external_api = f"{MEALDB_API}/filter.php?i={ingredient}"
+    response = requests.get(external_api)
+    data = response.json()
+    if response:
+        return {"ingredient": ingredient, "recipes": data["meals"]}
+    else:
+        return{"message": "Error, ingredient not found"}
 
-    if result:
-        return{"message": "successful"}
-        raise HTTPException(status_code=500, detail="Error fetching data from MealDB")
 
-    data = result.json()
-
-    if not data["meals"]:
-        raise HTTPException(status_code=404, detail="No recipes found for that ingredient")
-
-    return {"ingredient": ingredient, "recipes": data["meals"]}
-
-#use post to save a recipe (with user notes) to MongoDB.
-
-@app.post("/recipes/favorites")
+#save favourite recipes
+@app.post("/recipes/favorites", tags=["Recipe Finder"])
 def save_favorite(recipe: Recipe):
     recipe_data = recipe.model_dump()
     result = recipes_collection.insert_one(recipe_data)
-    return {
-        "message": "Recipe saved successfully!","id": str(result.inserted_id),  "saved_recipe": recipe_data
-    }
+    return {"message": "Recipe saved successfully!","id": str(result.ObjectId),  "saved_recipe": recipe_data}
+
 
 #get all list OF saved favorite recipes from MongoDB.
-@app.get("/recipes/favorites")
+@app.get("/recipes/favorites", tags=["Recipe Finder"])
 def list_favorites():
-    recipes = list(recipes_collection.find({}, {"_id": 0})) 
+    recipes = list(recipes_collection.find({}))
     return {"favorites": recipes}
